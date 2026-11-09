@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="zh-HK" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="GoDental">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="GoDental">
+    <meta name="msapplication-TileColor" content="#4f46e5">
+    <meta name="msapplication-config" content="/patient/browserconfig.xml">
+    <link rel="manifest" href="/patient/manifest.json">
+    <link rel="apple-touch-icon" href="/patient/icons/icon-192x192.png">
+    <title>牙科預約</title>
+    <!-- Font Awesome 图标 -->
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+    <!-- Vue 3 -->
+    <script src="/vendor/vue/vue.global.js"></script>
+    <!-- 样式 -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- 手势支持 -->
+    <script src="gestures.js"></script>
+    <!-- 推送通知 -->
+    <script src="notifications.js"></script>
+</head>
+<body>
+    <div id="app" :class="{ 'rtl': isRtl }">
+        <!-- 语言选择器 - 登录前显示 -->
+        <div class="lang-selector-float" v-if="!isLoggedIn">
+            <button class="lang-float-btn" @click.stop="showLangMenu = !showLangMenu" :title="t('language')">
+                <span class="lang-flag-lg">{{ getLangInfo(currentLang).flag }}</span>
+                <i class="fas fa-chevron-down" :class="{ 'rotate': showLangMenu }"></i>
+            </button>
+            <div class="lang-menu-float" v-show="showLangMenu">
+                <div class="lang-menu-header">
+                    <i class="fas fa-globe"></i>
+                    <span>{{ t('language') }}</span>
+                </div>
+                <div class="lang-item" :class="{ active: currentLang === 'zh-CN' }" @click="changeLanguage('zh-CN')">
+                    <span class="flag">🇨🇳</span>
+                    <span class="name">简体中文</span>
+                    <i class="fas fa-check" v-if="currentLang === 'zh-CN'"></i>
+                </div>
+                <div class="lang-item" :class="{ active: currentLang === 'zh-HK' }" @click="changeLanguage('zh-HK')">
+                    <span class="flag">🇭🇰</span>
+                    <span class="name">繁體中文</span>
+                    <i class="fas fa-check" v-if="currentLang === 'zh-HK'"></i>
+                </div>
+                <div class="lang-item" :class="{ active: currentLang === 'en' }" @click="changeLanguage('en')">
+                    <span class="flag">🇬🇧</span>
+                    <span class="name">English</span>
+                    <i class="fas fa-check" v-if="currentLang === 'en'"></i>
+                </div>
+                <div class="lang-item" :class="{ active: currentLang === 'ar' }" @click="changeLanguage('ar')">
+                    <span class="flag">🇸🇦</span>
+                    <span class="name">العربية</span>
+                    <i class="fas fa-check" v-if="currentLang === 'ar'"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- 登录/注册页面 -->
+        <div v-if="!isLoggedIn" class="login-page">
+            <div class="login-container">
+                <div class="logo">
+                    <i class="fas fa-tooth"></i>
+                    <h1>{{ t('appName') }}</h1>
+                </div>
+                
+                <!-- 登录表单 -->
+                <form v-if="authMode === 'login'" @submit.prevent="login" class="login-form">
+                    <div class="input-group">
+                        <i class="fas fa-envelope"></i>
+                        <input type="email" v-model="loginForm.email" :placeholder="t('email')" required>
+                    </div>
+                    <div class="input-group">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" v-model="loginForm.password" :placeholder="t('password')" required>
+                    </div>
+                    <button type="submit" class="btn-primary" :disabled="loading">
+                        <i class="fas fa-sign-in-alt" v-if="!loading"></i>
+                        <i class="fas fa-spinner fa-spin" v-else></i>
+                        {{ loading ? t('loading') : t('loginButton') }}
+                    </button>
+                    <p class="switch-mode">
+                        {{ t('noAccount') }}<a @click.prevent="switchAuthMode" href="#">{{ t('registerNow') }}</a>
+                    </p>
+                </form>
+                
+                <!-- 注册表单 -->
+                <form v-else @submit.prevent="register" class="login-form">
+                    <div class="input-group">
+                        <i class="fas fa-user"></i>
+                        <input type="text" v-model="registerForm.name" :placeholder="t('name')" required>
+                    </div>
+                    <div class="input-group">
+                        <i class="fas fa-envelope"></i>
+                        <input type="email" v-model="registerForm.email" :placeholder="t('email')" required>
+                    </div>
+                    <div class="input-group">
+                        <i class="fas fa-phone"></i>
+                        <input type="tel" v-model="registerForm.phone" :placeholder="t('phone')">
+                    </div>
+                    <div class="input-group">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" v-model="registerForm.password" :placeholder="t('password')" required minlength="6">
+                    </div>
+                    <div class="input-group">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" v-model="registerForm.confirmPassword" :placeholder="t('confirmPassword')" required>
+                    </div>
+                    <button type="submit" class="btn-primary" :disabled="loading">
+                        <i class="fas fa-user-plus" v-if="!loading"></i>
+                        <i class="fas fa-spinner fa-spin" v-else></i>
+                        {{ loading ? t('loading') : t('registerButton') }}
+                    </button>
+                    <p class="switch-mode">
+                        {{ t('hasAccount') }}<a @click.prevent="switchAuthMode" href="#">{{ t('loginNow') }}</a>
+                    </p>
+                </form>
+
+                <!-- 第三方一键登录 -->
+                <div v-if="authMode === 'login'" class="social-login">
+                    <div class="social-divider"><span>{{ t('orLoginWith') }}</span></div>
+                    <button type="button" class="btn-social btn-apple" :disabled="loading || !socialAuth.appleEnabled"
+                            @click="loginWithApple" :title="socialAuth.appleEnabled ? '' : t('socialNotAvailable')">
+                        <i class="fab fa-apple"></i>
+                        {{ t('loginWithApple') }}
+                        <span v-if="!socialAuth.appleEnabled" class="social-badge">{{ t('socialNotAvailable') }}</span>
+                    </button>
+                    <button type="button" class="btn-social btn-google" :disabled="loading || !socialAuth.googleEnabled"
+                            @click="loginWithGoogle" :title="socialAuth.googleEnabled ? '' : t('socialNotAvailable')">
+                        <i class="fab fa-google"></i>
+                        {{ t('loginWithGoogle') }}
+                        <span v-if="!socialAuth.googleEnabled" class="social-badge">{{ t('socialNotAvailable') }}</span>
+                    </button>
+                </div>
+                
+                <p class="error-message" v-if="errorMessage">
+                    <i class="fas fa-exclamation-circle"></i> {{ errorMessage }}
+                </p>
+            </div>
+        </div>
+
+        <!-- 主应用 -->
+        <div v-else class="main-app">
+            <!-- 顶部导航 -->
+            <header class="app-header">
+                <div class="header-left">
+                    <i class="fas fa-tooth logo-icon"></i>
+                    <span class="app-title">{{ t('appName') }}</span>
+                </div>
+                <div class="header-right">
+                    <!-- 语言切换按钮 (登录后) -->
+                    <div class="lang-dropdown-header">
+                        <button class="lang-header-btn" @click.stop="showLangMenu = !showLangMenu" :title="t('language')">
+                            <span class="lang-flag-sm">{{ getLangInfo(currentLang).flag }}</span>
+                            <i class="fas fa-chevron-down" :class="{ 'rotate': showLangMenu }"></i>
+                        </button>
+                        <div class="lang-menu-header-dropdown" v-show="showLangMenu">
+                            <div class="lang-menu-header-title">
+                                <i class="fas fa-globe"></i>
+                                <span>{{ t('language') }}</span>
+                            </div>
+                            <div class="lang-option" :class="{ active: currentLang === 'zh-CN' }" @click="changeLanguage('zh-CN')">
+                                <span class="flag">🇨🇳</span>
+                                <span class="name">简体中文</span>
+                                <i class="fas fa-check check-icon" v-if="currentLang === 'zh-CN'"></i>
+                            </div>
+                            <div class="lang-option" :class="{ active: currentLang === 'zh-HK' }" @click="changeLanguage('zh-HK')">
+                                <span class="flag">🇭🇰</span>
+                                <span class="name">繁體中文</span>
+                                <i class="fas fa-check check-icon" v-if="currentLang === 'zh-HK'"></i>
+                            </div>
+                            <div class="lang-option" :class="{ active: currentLang === 'en' }" @click="changeLanguage('en')">
+                                <span class="flag">🇬🇧</span>
+                                <span class="name">English</span>
+                                <i class="fas fa-check check-icon" v-if="currentLang === 'en'"></i>
+                            </div>
+                            <div class="lang-option" :class="{ active: currentLang === 'ar' }" @click="changeLanguage('ar')">
+                                <span class="flag">🇸🇦</span>
+                                <span class="name">العربية</span>
+                                <i class="fas fa-check check-icon" v-if="currentLang === 'ar'"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="icon-btn" @click="showNotifications">
+                        <i class="fas fa-bell"></i>
+                        <span class="badge" v-if="unreadCount > 0">{{ unreadCount }}</span>
+                    </button>
+                    <button class="icon-btn" @click="logout">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- 页面内容 -->
+            <main class="page-content">
+                <!-- 首页 - 机构列表 -->
+                <div v-if="currentPage === 'home'" class="page">
+                    <div class="search-bar">
+                        <i class="fas fa-search"></i>
+                        <input type="text" v-model="searchQuery" :placeholder="t('searchPlaceholder')">
+                    </div>
+
+                    <!-- AI 导诊入口 -->
+                    <div class="ai-entry-card" @click="openAiConsult">
+                        <div class="ai-entry-icon">🦷</div>
+                        <div class="ai-entry-info">
+                            <div class="ai-entry-title"><i class="fas fa-robot"></i> {{ t('aiTriage') }}</div>
+                            <div class="ai-entry-desc">{{ t('aiTriageDesc') }}</div>
+                        </div>
+                        <i class="fas fa-chevron-right ai-entry-arrow"></i>
+                    </div>
+                    
+                    <div class="section-title">
+                        <i class="fas fa-hospital"></i> {{ t('recommendedClinics') }}
+                    </div>
+                    
+                    <div class="institution-list">
+                        <div v-for="inst in filteredInstitutions" :key="inst.id" class="institution-card" @click="selectInstitution(inst)">
+                            <div class="inst-image">
+                                <i class="fas fa-hospital-alt"></i>
+                            </div>
+                            <div class="inst-info">
+                                <h3>{{ inst.name }}</h3>
+                                <p class="inst-address">
+                                    <i class="fas fa-map-marker-alt"></i> {{ inst.address }}
+                                </p>
+                                <p class="inst-phone">
+                                    <i class="fas fa-phone"></i> {{ inst.phone }}
+                                </p>
+                                <div class="inst-rating">
+                                    <i class="fas fa-star" v-for="n in 5" :key="n" :class="{ 'filled': n <= inst.rating }"></i>
+                                    <span>{{ inst.rating }}</span>
+                                </div>
+                            </div>
+                            <i class="fas fa-chevron-right arrow-icon"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI 导诊 -->
+                <div v-if="currentPage === 'ai-consult'" class="page ai-page">
+                    <div class="page-header">
+                        <button class="back-btn" @click="currentPage = 'home'">
+                            <i class="fas fa-arrow-left"></i>
+                        </button>
+                        <h2><i class="fas fa-robot" style="color: var(--primary-color);"></i> {{ t('aiTriage') }}</h2>
+                    </div>
+
+                    <!-- 消息列表 -->
+                    <div class="ai-messages">
+                        <div v-for="(msg, idx) in aiMessages" :key="idx" class="ai-msg-row" :class="msg.role">
+                            <div v-if="msg.role === 'assistant'" class="ai-avatar">🦷</div>
+                            <div class="ai-bubble" :class="[msg.role, { 'error-bubble': msg.isError }]">
+                                <!-- 思考中动画 -->
+                                <div v-if="msg.thinking" class="ai-thinking">
+                                    <span class="ai-dot"></span>
+                                    <span class="ai-dot"></span>
+                                    <span class="ai-dot"></span>
+                                    <span class="ai-thinking-text">{{ t('aiThinking') }}</span>
+                                </div>
+                                <template v-else>
+                                    <div class="ai-msg-text">{{ msg.text }}</div>
+
+                                    <!-- 建议就诊方向 -->
+                                    <div v-if="msg.specialties && msg.specialties.length > 0" class="ai-specialties">
+                                        <div class="ai-section-label">{{ t('aiSuggestedLabel') }}</div>
+                                        <span v-for="s in msg.specialties" :key="s" class="ai-tag">{{ s }}</span>
+                                    </div>
+
+                                    <!-- 推荐医生卡片 -->
+                                    <div v-if="msg.dentists && msg.dentists.length > 0" class="ai-dentists">
+                                        <div class="ai-section-label">{{ t('aiRecommendedLabel') }}</div>
+                                        <div v-for="d in msg.dentists" :key="d.id" class="ai-dentist-card" @click="goToAiDentist(d)">
+                                            <div class="ai-dentist-avatar">{{ (d.name && d.name[0]) || '👤' }}</div>
+                                            <div class="ai-dentist-info">
+                                                <div class="ai-dentist-name-row">
+                                                    <span class="ai-dentist-name">{{ d.name }}</span>
+                                                    <span v-if="d.title" class="ai-dentist-title">{{ d.title }}</span>
+                                                </div>
+                                                <div v-if="d.institutionName" class="ai-dentist-inst">
+                                                    <i class="fas fa-hospital"></i> {{ d.institutionName }}
+                                                </div>
+                                                <div v-if="d.reason" class="ai-dentist-reason">{{ d.reason }}</div>
+                                                <div v-if="d.rating" class="ai-dentist-meta">
+                                                    <span class="ai-rating">⭐ {{ d.rating }}</span>
+                                                    <span class="ai-reviews">{{ d.reviewCount || 0 }}{{ t('aiReviewsUnit') }}</span>
+                                                </div>
+                                            </div>
+                                            <i class="fas fa-chevron-right ai-dentist-arrow"></i>
+                                        </div>
+                                    </div>
+
+                                    <!-- 回答来源标识 -->
+                                    <span v-if="msg.source === 'ai'" class="ai-source-tag ai-source-ai">{{ t('aiSourceAi') }}</span>
+                                    <span v-else-if="msg.source === 'fallback'" class="ai-source-tag ai-source-fallback">{{ t('aiSourceFallback') }}</span>
+
+                                    <!-- 免责声明 -->
+                                    <div v-if="msg.disclaimer" class="ai-disclaimer">{{ msg.disclaimer }}</div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 常见症状快捷入口（首轮显示） -->
+                    <div v-if="aiMessages.length === 1 && aiSymptoms.length > 0" class="ai-quick-symptoms">
+                        <span v-for="s in aiSymptoms" :key="s" class="ai-chip" @click="sendAiMessage(s)">{{ s }}</span>
+                    </div>
+
+                    <!-- 底部输入栏 -->
+                    <div class="ai-input-bar">
+                        <input type="text" class="ai-msg-input" v-model="aiInput" maxlength="500"
+                               :placeholder="t('aiInputPlaceholder')"
+                               @keyup.enter="sendAiMessage()">
+                        <button class="ai-send-btn" @click="sendAiMessage()" :disabled="aiSending || !aiInput.trim()">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 医生列表 -->
+                <div v-if="currentPage === 'dentists'" class="page">
+                    <div class="page-header">
+                        <button class="back-btn" @click="currentPage = 'home'">
+                            <i class="fas fa-arrow-left"></i>
+                        </button>
+                        <h2>{{ selectedInstitution?.name }}</h2>
+                    </div>
+                    
+                    <div class="section-title">
+                        <i class="fas fa-user-md"></i> {{ t('selectDoctor') }}
+                    </div>
+                    
+                    <div class="dentist-list">
+                        <div v-for="dentist in dentists" :key="dentist.id" class="dentist-card" @click="selectDentist(dentist)">
+                            <div class="dentist-avatar">
+                                <i class="fas fa-user-md"></i>
+                            </div>
+                            <div class="dentist-info">
+                                <h3>{{ dentist.name }}</h3>
+                                <p class="dentist-title">
+                                    <i class="fas fa-certificate"></i> {{ dentist.title }}
+                                </p>
+                                <!-- 擅长领域 - 显示完整版本 -->
+                                <p v-if="dentist.specialties" class="dentist-specialties-detail">
+                                    <i class="fas fa-stethoscope"></i> <strong>擅长:</strong> {{ dentist.specialties.length > 50 ? dentist.specialties.substring(0, 50) + '...' : dentist.specialties }}
+                                </p>
+                                <p v-else-if="dentist.specialty" class="dentist-specialty">
+                                    <i class="fas fa-stethoscope"></i> {{ dentist.specialty }}
+                                </p>
+                                <!-- 个人简介 -->
+                                <p v-if="dentist.introduction" class="dentist-introduction">
+                                    <i class="fas fa-info-circle"></i> {{ dentist.introduction.substring(0, 60) }}{{ dentist.introduction.length > 60 ? '...' : '' }}
+                                </p>
+                                <div class="dentist-rating">
+                                    <i class="fas fa-star" v-for="n in 5" :key="n" :class="{ 'filled': n <= dentist.rating }"></i>
+                                    <span>{{ dentist.rating }} ({{ dentist.reviewCount }}{{ t('reviews') }})</span>
+                                </div>
+                                <p class="consult-price">
+                                    <i class="fas fa-dollar-sign"></i> {{ t('consultationFee') }}: ${{ dentist.consultPrice }}
+                                </p>
+                            </div>
+                            <i class="fas fa-chevron-right arrow-icon"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 预约页面 -->
+                <div v-if="currentPage === 'booking'" class="page">
+                    <div class="page-header">
+                        <button class="back-btn" @click="currentPage = bookingBackPage">
+                            <i class="fas fa-arrow-left"></i>
+                        </button>
+                        <h2>{{ t('bookAppointment') }} - {{ selectedDentist?.name }}</h2>
+                    </div>
+
+                    <!-- 医生详细信息 -->
+                    <div v-if="selectedDentist" class="section dentist-detail-section">
+                        <div class="dentist-detail-header">
+                            <div class="dentist-detail-avatar">
+                                <i class="fas fa-user-md"></i>
+                            </div>
+                            <div class="dentist-detail-basic">
+                                <h3>{{ selectedDentist.name }}</h3>
+                                <p class="dentist-detail-title">
+                                    <i class="fas fa-certificate"></i> {{ selectedDentist.title }}
+                                </p>
+                                <div class="dentist-detail-rating">
+                                    <i class="fas fa-star" v-for="n in 5" :key="n" :class="{ 'filled': n <= selectedDentist.rating }"></i>
+                                    <span>{{ selectedDentist.rating }} ({{ selectedDentist.reviewCount }}{{ t('reviews') }})</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 完整擅长领域 -->
+                        <div v-if="selectedDentist.specialties || selectedDentist.specialty" class="dentist-detail-item">
+                            <div class="detail-label">
+                                <i class="fas fa-stethoscope"></i> 擅长领域
+                            </div>
+                            <div class="detail-content specialties">
+                                {{ selectedDentist.specialties || selectedDentist.specialty }}
+                            </div>
+                        </div>
+                        
+                        <!-- 完整个人简介 -->
+                        <div v-if="selectedDentist.introduction" class="dentist-detail-item">
+                            <div class="detail-label">
+                                <i class="fas fa-info-circle"></i> 医生简介
+                            </div>
+                            <div class="detail-content introduction">
+                                {{ selectedDentist.introduction }}
+                            </div>
+                        </div>
+                        
+                        <!-- 咨询费用 -->
+                        <div class="dentist-detail-item">
+                            <div class="detail-label">
+                                <i class="fas fa-dollar-sign"></i> 咨询费用
+                            </div>
+                            <div class="detail-content price">
+                                ${{ selectedDentist.consultPrice || 100 }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 日期选择 -->
+                    <div class="section">
+                        <div class="section-title">
+                            <i class="fas fa-calendar-alt"></i> {{ t('selectDate') }}
+                        </div>
+                        <div class="date-scroll">
+                            <div v-for="date in availableDates" :key="date.value" 
+                                 class="date-item" 
+                                 :class="{ active: selectedDate === date.value }"
+                                 @click="selectDate(date.value)">
+                                <span class="day-name">{{ date.dayName }}</span>
+                                <span class="day-number">{{ date.month }}/{{ date.dayNumber }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 时段选择 -->
+                    <div class="section">
+                        <div class="section-title">
+                            <i class="fas fa-clock"></i> {{ t('selectTime') }}
+                        </div>
+                        <div class="time-slots">
+                            <div v-for="slot in timeSlots" :key="slot.startTime" 
+                                 class="time-slot"
+                                 :class="{ available: slot.isAvailable, selected: selectedSlot === slot.startTime }"
+                                 @click="slot.isAvailable && (selectedSlot = slot.startTime)">
+                                <i class="fas fa-check-circle" v-if="selectedSlot === slot.startTime"></i>
+                                <i class="fas fa-clock" v-else-if="slot.isAvailable"></i>
+                                <i class="fas fa-times-circle" v-else></i>
+                                {{ formatTime(slot.startTime) }} - {{ formatTime(slot.endTime) }}
+                            </div>
+                        </div>
+                        <div v-if="timeSlots.length === 0" class="empty-state small">
+                            <i class="fas fa-calendar-times"></i>
+                            <p>{{ t('noTimeSlots') }}</p>
+                        </div>
+                    </div>
+
+                    <!-- 预约表单 -->
+                    <div class="section">
+                        <div class="section-title">
+                            <i class="fas fa-clipboard-list"></i> {{ t('appointmentDetails') }}
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-comment-medical"></i> {{ t('symptoms') }}</label>
+                            <textarea v-model="appointmentForm.symptoms" :placeholder="t('symptomsPlaceholder')"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-sticky-note"></i> {{ t('notes') }}</label>
+                            <textarea v-model="appointmentForm.notes" :placeholder="t('notesPlaceholder')"></textarea>
+                        </div>
+                        
+                        <!-- 特殊服务需求 -->
+                        <div class="form-group special-services">
+                            <label><i class="fas fa-hand-holding-heart"></i> {{ t('specialServices') }}</label>
+                            <div class="checkbox-group">
+                                <label class="checkbox-item">
+                                    <input type="checkbox" v-model="appointmentForm.needTransportation">
+                                    <span class="check-icon"><i class="fas fa-car"></i></span>
+                                    <span class="check-text">{{ t('needTransportation') }}</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" v-model="appointmentForm.needTranslation">
+                                    <span class="check-icon"><i class="fas fa-language"></i></span>
+                                    <span class="check-text">{{ t('needTranslation') }}</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- 服务联系信息（共用电话） -->
+                        <div class="form-group service-details" v-if="appointmentForm.needTransportation || appointmentForm.needTranslation">
+                            <div class="service-details-header">
+                                <i class="fas fa-address-book" style="color: #6366f1;"></i>
+                                <span>{{ t('serviceContact') }}</span>
+                            </div>
+                            <div class="service-details-body">
+                                <!-- 车接送地址 -->
+                                <div class="form-row" v-if="appointmentForm.needTransportation">
+                                    <label><i class="fas fa-map-marker-alt" style="color: #f59e0b; width: 20px;"></i> {{ t('transportAddress') }}</label>
+                                    <input type="text" v-model="appointmentForm.transportAddress" :placeholder="t('transportAddressPlaceholder')">
+                                </div>
+                                <!-- 翻译语言 -->
+                                <div class="form-row" v-if="appointmentForm.needTranslation">
+                                    <label><i class="fas fa-globe" style="color: #10b981; width: 20px;"></i> {{ t('translationLanguage') }}</label>
+                                    <select v-model="appointmentForm.translationLanguage">
+                                        <option value="">{{ t('pleaseSelect') }}</option>
+                                        <option value="en">English (英语)</option>
+                                        <option value="zh-CN">简体中文</option>
+                                        <option value="zh-HK">繁體中文</option>
+                                        <option value="ar">العربية (阿拉伯语)</option>
+                                        <option value="ja">日本語</option>
+                                        <option value="ko">한국어</option>
+                                        <option value="fr">Français</option>
+                                        <option value="es">Español</option>
+                                        <option value="other">{{ t('other') }}</option>
+                                    </select>
+                                </div>
+                                <!-- 共用的联系电话 -->
+                                <div class="form-row">
+                                    <label><i class="fas fa-phone" style="color: #6366f1; width: 20px;"></i> {{ t('servicePhone') }}</label>
+                                    <input type="tel" v-model="appointmentForm.servicePhone" :placeholder="t('servicePhonePlaceholder')">
+                                    <small class="help-text">{{ t('servicePhoneHint') }}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn-primary btn-large" @click="showConfirmModal" :disabled="!canSubmit || loading">
+                        <i class="fas fa-calendar-check" v-if="!loading"></i>
+                        <i class="fas fa-spinner fa-spin" v-else></i>
+                        {{ loading ? t('loading') : t('submitAppointment') }}
+                    </button>
+                </div>
+
+                <!-- 预约确认弹窗 -->
+                <div class="modal-overlay" v-if="showConfirm" @click.self="closeConfirmModal">
+                    <div class="modal-content confirm-modal">
+                        <div class="modal-header">
+                            <h3><i class="fas fa-clipboard-check"></i> {{ t('confirmAppointment') }}</h3>
+                            <button class="modal-close" @click="closeConfirmModal">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="confirm-section">
+                                <div class="confirm-label"><i class="fas fa-hospital"></i> {{ t('clinic') }}</div>
+                                <div class="confirm-value">{{ selectedInstitution?.name }}</div>
+                            </div>
+                            <div class="confirm-section">
+                                <div class="confirm-label"><i class="fas fa-user-md"></i> {{ t('doctor') }}</div>
+                                <div class="confirm-value">{{ selectedDentist?.name }} - {{ selectedDentist?.title }}</div>
+                            </div>
+                            <div class="confirm-section">
+                                <div class="confirm-label"><i class="fas fa-calendar-alt"></i> {{ t('appointmentDate') }}</div>
+                                <div class="confirm-value">{{ formatConfirmDate(selectedDate) }}</div>
+                            </div>
+                            <div class="confirm-section">
+                                <div class="confirm-label"><i class="fas fa-clock"></i> {{ t('appointmentTime') }}</div>
+                                <div class="confirm-value">{{ formatTime(selectedSlot) }}</div>
+                            </div>
+                            <div class="confirm-section" v-if="appointmentForm.symptoms">
+                                <div class="confirm-label"><i class="fas fa-comment-medical"></i> {{ t('symptoms') }}</div>
+                                <div class="confirm-value text-muted">{{ appointmentForm.symptoms }}</div>
+                            </div>
+                            <div class="confirm-section" v-if="appointmentForm.notes">
+                                <div class="confirm-label"><i class="fas fa-sticky-note"></i> {{ t('notes') }}</div>
+                                <div class="confirm-value text-muted">{{ appointmentForm.notes }}</div>
+                            </div>
+                            <!-- 特殊服务需求确认 -->
+                            <div class="confirm-section" v-if="appointmentForm.needTransportation || appointmentForm.needTranslation">
+                                <div class="confirm-label"><i class="fas fa-hand-holding-heart"></i> {{ t('specialServices') }}</div>
+                                <div class="confirm-value">
+                                    <!-- 车接送详情 -->
+                                    <div v-if="appointmentForm.needTransportation" class="confirm-service-item">
+                                        <div class="confirm-service-header">
+                                            <i class="fas fa-car" style="color: #f59e0b;"></i>
+                                            <span>{{ t('needTransportation') }}</span>
+                                        </div>
+                                        <div class="confirm-service-detail">
+                                            <div v-if="appointmentForm.transportAddress">
+                                                <i class="fas fa-map-marker-alt"></i> {{ appointmentForm.transportAddress }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- 翻译服务详情 -->
+                                    <div v-if="appointmentForm.needTranslation" class="confirm-service-item">
+                                        <div class="confirm-service-header">
+                                            <i class="fas fa-language" style="color: #10b981;"></i>
+                                            <span>{{ t('needTranslation') }}</span>
+                                        </div>
+                                        <div class="confirm-service-detail">
+                                            <div v-if="appointmentForm.translationLanguage">
+                                                <i class="fas fa-globe"></i> {{ getLanguageName(appointmentForm.translationLanguage) }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- 共用联系电话 -->
+                                    <div v-if="appointmentForm.servicePhone" class="confirm-service-item" style="background: #eef2ff; border-left-color: #6366f1;">
+                                        <div class="confirm-service-header">
+                                            <i class="fas fa-phone" style="color: #6366f1;"></i>
+                                            <span>{{ t('servicePhone') }}</span>
+                                        </div>
+                                        <div class="confirm-service-detail">
+                                            <div>{{ appointmentForm.servicePhone }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="confirm-notice">
+                                <i class="fas fa-info-circle"></i>
+                                <span>{{ t('confirmNotice') }}</span>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn-secondary" @click="closeConfirmModal">
+                                <i class="fas fa-times"></i> {{ t('cancel') }}
+                            </button>
+                            <button class="btn-primary" @click="confirmCreateAppointment" :disabled="loading">
+                                <i class="fas fa-check" v-if="!loading"></i>
+                                <i class="fas fa-spinner fa-spin" v-else></i>
+                                {{ loading ? t('loading') : t('confirm') }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 我的预约 -->
+                <div v-if="currentPage === 'appointments'" class="page">
+                    <div class="section-title">
+                        <i class="fas fa-list-alt"></i> {{ t('myAppointments') }}
+                    </div>
+                    
+                    <!-- 状态筛选 -->
+                    <div class="filter-tabs">
+                        <button v-for="filter in filters" :key="filter.value"
+                                :class="{ active: appointmentFilter === filter.value }"
+                                @click="appointmentFilter = filter.value">
+                            <i :class="filter.icon"></i> {{ filter.label }}
+                        </button>
+                    </div>
+
+                    <!-- 预约列表 -->
+                    <div class="appointment-list">
+                        <div v-for="apt in filteredAppointments" :key="apt.apptId" 
+                             class="appointment-card" 
+                             @click="showAppointmentDetail(apt)">
+                            <div class="apt-header">
+                                <div class="apt-status" :class="getStatusClass(apt.status)">
+                                    <i :class="getStatusIcon(apt.status)"></i>
+                                    {{ getStatusLabel(apt.status) }}
+                                </div>
+                                <span class="apt-date">
+                                    <i class="fas fa-calendar"></i> {{ formatDate(apt.apptDate) }}
+                                </span>
+                            </div>
+                            <div class="apt-body">
+                                <div class="apt-info-row">
+                                    <i class="fas fa-hashtag"></i>
+                                    <span>{{ t('orderNo') }}: {{ apt.orderNo }}</span>
+                                </div>
+                                <div class="apt-info-row">
+                                    <i class="fas fa-user-md"></i>
+                                    <span>{{ apt.dentistName }}</span>
+                                </div>
+                                <div class="apt-info-row">
+                                    <i class="fas fa-clock"></i>
+                                    <span>{{ formatTime(apt.apptTime) }}</span>
+                                </div>
+                                <div class="apt-info-row">
+                                    <i class="fas fa-hospital"></i>
+                                    <span>{{ apt.instName }}</span>
+                                </div>
+                                <div class="apt-info-row" v-if="apt.serviceName">
+                                    <i class="fas fa-tooth"></i>
+                                    <span>{{ apt.serviceName }}</span>
+                                </div>
+                                <div class="apt-info-row price">
+                                    <i class="fas fa-dollar-sign"></i>
+                                    <span>{{ t('fee') }}: ${{ apt.totalAmount }} ({{ apt.paymentStatus === 'Paid' ? t('paid') : t('unpaid') }})</span>
+                                </div>
+                                <!-- 特殊服务需求标签 -->
+                                <div class="apt-info-row special-tags" v-if="apt.needTransportation || apt.needTranslation">
+                                    <span v-if="apt.needTransportation" class="mini-tag" title="{{ t('needTransportation') }}">
+                                        <i class="fas fa-car"></i>
+                                    </span>
+                                    <span v-if="apt.needTranslation" class="mini-tag" title="{{ t('needTranslation') }}">
+                                        <i class="fas fa-language"></i>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="apt-actions" v-if="apt.status === 'Pending'" @click.stop>
+                                <button class="btn-cancel" @click="cancelAppointment(apt.apptId)">
+                                    <i class="fas fa-times"></i> {{ t('cancelAppointment') }}
+                                </button>
+                            </div>
+                            <div class="apt-view-detail">
+                                <span>{{ t('viewDetail') }}</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </div>
+                        </div>
+
+                        <div v-if="filteredAppointments.length === 0" class="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <p>{{ t('noAppointments') }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 预约详情弹窗 -->
+                <div class="modal-overlay" v-if="selectedAppointment" @click.self="closeAppointmentDetail">
+                    <div class="modal-content detail-modal">
+                        <div class="modal-header" :class="getStatusClass(selectedAppointment.status)">
+                            <h3>
+                                <i :class="getStatusIcon(selectedAppointment.status)"></i>
+                                {{ getStatusLabel(selectedAppointment.status) }}
+                            </h3>
+                            <button class="modal-close" @click="closeAppointmentDetail">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <!-- 订单号 -->
+                            <div class="detail-section order-section">
+                                <div class="order-number">{{ selectedAppointment.orderNo }}</div>
+                                <div class="order-label">{{ t('orderNo') }}</div>
+                            </div>
+                            
+                            <!-- 预约信息 -->
+                            <div class="detail-section">
+                                <div class="detail-title">{{ t('appointmentInfo') }}</div>
+                                <div class="detail-row">
+                                    <div class="detail-label"><i class="fas fa-calendar-alt"></i> {{ t('appointmentDate') }}</div>
+                                    <div class="detail-value">{{ formatDate(selectedAppointment.apptDate) }}</div>
+                                </div>
+                                <div class="detail-row">
+                                    <div class="detail-label"><i class="fas fa-clock"></i> {{ t('appointmentTime') }}</div>
+                                    <div class="detail-value">{{ formatTime(selectedAppointment.apptTime) }}</div>
+                                </div>
+                                <div class="detail-row" v-if="selectedAppointment.serviceName">
+                                    <div class="detail-label"><i class="fas fa-tooth"></i> {{ t('service') }}</div>
+                                    <div class="detail-value">{{ selectedAppointment.serviceName }}</div>
+                                </div>
+                                <div class="detail-row" v-if="selectedAppointment.userRemarks">
+                                    <div class="detail-label"><i class="fas fa-comment-dots"></i> {{ t('remarks') }}</div>
+                                    <div class="detail-value" style="white-space: pre-line;">{{ selectedAppointment.userRemarks }}</div>
+                                </div>
+                            </div>
+
+                            <!-- 诊所信息 -->
+                            <div class="detail-section">
+                                <div class="detail-title">{{ t('clinicInfo') }}</div>
+                                <div class="detail-row">
+                                    <div class="detail-label"><i class="fas fa-hospital"></i> {{ t('clinicName') }}</div>
+                                    <div class="detail-value">{{ selectedAppointment.instName }}</div>
+                                </div>
+                                <div class="detail-row">
+                                    <div class="detail-label"><i class="fas fa-user-md"></i> {{ t('doctor') }}</div>
+                                    <div class="detail-value">{{ selectedAppointment.dentistName }}</div>
+                                </div>
+                            </div>
+
+                            <!-- 费用信息 -->
+                            <div class="detail-section">
+                                <div class="detail-title">{{ t('paymentInfo') }}</div>
+                                <div class="detail-row">
+                                    <div class="detail-label"><i class="fas fa-dollar-sign"></i> {{ t('consultationFee') }}</div>
+                                    <div class="detail-value">${{ selectedAppointment.consultPrice || selectedAppointment.totalAmount }}</div>
+                                </div>
+                                <div class="detail-row">
+                                    <div class="detail-label"><i class="fas fa-credit-card"></i> {{ t('paymentStatus') }}</div>
+                                    <div class="detail-value" :class="selectedAppointment.paymentStatus === 'Paid' ? 'text-success' : 'text-warning'">
+                                        {{ selectedAppointment.paymentStatus === 'Paid' ? t('paid') : t('unpaid') }}
+                                    </div>
+                                </div>
+                                <div class="detail-row total-row" v-if="selectedAppointment.totalAmount">
+                                    <div class="detail-label"><i class="fas fa-receipt"></i> {{ t('totalAmount') }}</div>
+                                    <div class="detail-value price">${{ selectedAppointment.totalAmount }}</div>
+                                </div>
+                            </div>
+
+                            <!-- 特殊服务需求 -->
+                            <div class="detail-section special-services-section" v-if="selectedAppointment.needTransportation || selectedAppointment.needTranslation">
+                                <div class="detail-title"><i class="fas fa-hand-holding-heart"></i> {{ t('specialServices') }}</div>
+                                <div class="special-services-display">
+                                    <!-- 车接送详情 -->
+                                    <div v-if="selectedAppointment.needTransportation" class="service-item service-transport">
+                                        <div class="service-icon">
+                                            <i class="fas fa-car"></i>
+                                        </div>
+                                        <div class="service-info">
+                                            <div class="service-name">{{ t('needTransportation') }}</div>
+                                            <div class="service-detail-text" v-if="selectedAppointment.transportAddress">
+                                                <i class="fas fa-map-marker-alt"></i> {{ selectedAppointment.transportAddress }}
+                                            </div>
+                                            <div class="service-desc" v-else>{{ t('transportDesc') }}</div>
+                                        </div>
+                                        <div class="service-status">
+                                            <i class="fas fa-check-circle"></i>
+                                        </div>
+                                    </div>
+                                    <!-- 翻译服务详情 -->
+                                    <div v-if="selectedAppointment.needTranslation" class="service-item service-translate">
+                                        <div class="service-icon">
+                                            <i class="fas fa-language"></i>
+                                        </div>
+                                        <div class="service-info">
+                                            <div class="service-name">{{ t('needTranslation') }}</div>
+                                            <div class="service-detail-text" v-if="selectedAppointment.translationLanguage">
+                                                <i class="fas fa-globe"></i> {{ getLanguageName(selectedAppointment.translationLanguage) }}
+                                            </div>
+                                            <div class="service-desc" v-else>{{ t('translationDesc') }}</div>
+                                        </div>
+                                        <div class="service-status">
+                                            <i class="fas fa-check-circle"></i>
+                                        </div>
+                                    </div>
+                                    <!-- 共用联系电话 -->
+                                    <div class="service-item" v-if="selectedAppointment.transportPhone || selectedAppointment.translationPhone" style="background: #eef2ff; border-left: 4px solid #6366f1;">
+                                        <div class="service-icon" style="background: #e0e7ff; color: #6366f1;">
+                                            <i class="fas fa-phone"></i>
+                                        </div>
+                                        <div class="service-info">
+                                            <div class="service-name">{{ t('servicePhone') }}</div>
+                                            <div class="service-detail-text">
+                                                {{ selectedAppointment.transportPhone || selectedAppointment.translationPhone }}
+                                            </div>
+                                        </div>
+                                        <div class="service-status" style="color: #6366f1;">
+                                            <i class="fas fa-check-circle"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 无特殊服务 -->
+                            <div class="detail-section special-services-section" v-else>
+                                <div class="detail-title"><i class="fas fa-hand-holding-heart"></i> {{ t('specialServices') }}</div>
+                                <div class="no-services">
+                                    <i class="fas fa-info-circle"></i>
+                                    <span>{{ t('noSpecialServices') || '无特殊服务需求' }}</span>
+                                </div>
+                            </div>
+                            
+                            <!-- 备注 -->
+                            <div class="detail-section" v-if="selectedAppointment.userRemarks">
+                                <div class="detail-title">{{ t('remarks') }}</div>
+                                <div class="detail-remarks">{{ selectedAppointment.userRemarks }}</div>
+                            </div>
+
+                            <!-- 预约时间 -->
+                            <div class="detail-meta">
+                                <div class="meta-item">
+                                    <i class="fas fa-plus-circle"></i>
+                                    <span>{{ t('createdAt') }}: {{ formatDateTime(selectedAppointment.createdAt) }}</span>
+                                </div>
+                                <div class="meta-item" v-if="selectedAppointment.updatedAt && selectedAppointment.updatedAt !== selectedAppointment.createdAt">
+                                    <i class="fas fa-sync"></i>
+                                    <span>{{ t('updatedAt') }}: {{ formatDateTime(selectedAppointment.updatedAt) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer" v-if="selectedAppointment.status === 'Pending'">
+                            <button class="btn-secondary" @click="closeAppointmentDetail">
+                                <i class="fas fa-times"></i> {{ t('close') }}
+                            </button>
+                            <button class="btn-cancel" @click="cancelDetailAppointment">
+                                <i class="fas fa-times-circle"></i> {{ t('cancelAppointment') }}
+                            </button>
+                        </div>
+                        <div class="modal-footer" v-else>
+                            <button class="btn-primary" @click="closeAppointmentDetail" style="flex: 1;">
+                                <i class="fas fa-check"></i> {{ t('confirm') }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 个人中心 -->
+                <div v-if="currentPage === 'profile'" class="page">
+                    <!-- 个人资料展示 -->
+                    <div v-if="!editingProfile" class="profile-view">
+                        <div class="profile-header">
+                            <div class="profile-avatar">
+                                <i class="fas fa-user-circle"></i>
+                            </div>
+                            <h2>{{ user?.name || t('notSet') }}</h2>
+                            <p><i class="fas fa-envelope"></i> {{ user?.email }}</p>
+                            <p><i class="fas fa-phone"></i> {{ user?.phone || t('notSet') }}</p>
+                        </div>
+
+                        <div class="menu-list">
+                            <div class="menu-item" @click="startEditProfile">
+                                <i class="fas fa-user-edit"></i>
+                                <span>{{ t('editProfile') }}</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </div>
+                            <div class="menu-item" @click="currentPage = 'appointments'; loadAppointments()">
+                                <i class="fas fa-calendar-alt"></i>
+                                <span>{{ t('myAppointments') }}</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </div>
+                            <div class="menu-item" @click="showSettings">
+                                <i class="fas fa-cog"></i>
+                                <span>{{ t('settings') }}</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </div>
+                            <div class="menu-item" @click="showHelp">
+                                <i class="fas fa-question-circle"></i>
+                                <span>{{ t('help') }}</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </div>
+                            <div class="menu-item logout" @click="logout">
+                                <i class="fas fa-sign-out-alt"></i>
+                                <span>{{ t('logout') }}</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 个人资料编辑 -->
+                    <div v-else class="profile-edit">
+                        <div class="page-header">
+                            <button class="back-btn" @click="cancelEditProfile">
+                                <i class="fas fa-arrow-left"></i>
+                            </button>
+                            <h2>{{ t('editProfile') }}</h2>
+                        </div>
+                        
+                        <div class="form-section">
+                            <div class="form-group">
+                                <label><i class="fas fa-user"></i> {{ t('name') }}</label>
+                                <input type="text" v-model="profileForm.name" :placeholder="t('name')">
+                            </div>
+                            <div class="form-group">
+                                <label><i class="fas fa-phone"></i> {{ t('phone') }}</label>
+                                <input type="tel" v-model="profileForm.phone" :placeholder="t('phone')">
+                            </div>
+                            <div class="form-group">
+                                <label><i class="fas fa-globe"></i> {{ t('language') }}</label>
+                                <select v-model="profileForm.preferredLanguage">
+                                    <option value="zh-CN">{{ t('languageCN') }}</option>
+                                    <option value="zh-HK">{{ t('languageHK') }}</option>
+                                    <option value="en">{{ t('languageEN') }}</option>
+                                    <option value="ar">{{ t('languageAR') }}</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <button class="btn-primary btn-large" @click="saveProfile" :disabled="loading">
+                            <i class="fas fa-save" v-if="!loading"></i>
+                            <i class="fas fa-spinner fa-spin" v-else></i>
+                            {{ loading ? t('loading') : t('save') }}
+                        </button>
+                    </div>
+                </div>
+            </main>
+
+            <!-- 底部导航 -->
+            <nav class="bottom-nav">
+                <button :class="{ active: currentPage === 'home' || currentPage === 'dentists' || currentPage === 'booking' || currentPage === 'ai-consult' }" 
+                        @click="currentPage = 'home'">
+                    <i class="fas fa-home"></i>
+                    <span>{{ t('home') }}</span>
+                </button>
+                <button :class="{ active: currentPage === 'appointments' }" 
+                        @click="currentPage = 'appointments'; loadAppointments()">
+                    <i class="fas fa-calendar-check"></i>
+                    <span>{{ t('myAppointments') }}</span>
+                </button>
+                <button :class="{ active: currentPage === 'profile' }" 
+                        @click="currentPage = 'profile'">
+                    <i class="fas fa-user"></i>
+                    <span>{{ t('profile') }}</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- 通知提示 -->
+        <div class="toast" v-if="toast.show" :class="toast.type">
+            <i :class="toast.icon"></i>
+            <span>{{ toast.message }}</span>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    
+    <!-- Service Worker 注册 -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/patient/service-worker.js')
+                    .then((registration) => {
+                        console.log('[PWA] Service Worker registered:', registration.scope);
+                        
+                        // 请求通知权限
+                        if ('Notification' in window && Notification.permission === 'default') {
+                            Notification.requestPermission();
+                        }
+                        
+                        // 监听更新
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('[PWA] New version available');
+                                    // 可以提示用户刷新页面
+                                }
+                            });
+                        });
+                    })
+                    .catch((error) => {
+                        console.log('[PWA] Service Worker registration failed:', error);
+                    });
+            });
+        }
+        
+        // 添加到主屏幕提示
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            console.log('[PWA] App can be installed');
+        });
+        
+        // 安装PWA
+        function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('[PWA] User accepted install');
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        }
+        
+        // 检查网络状态
+        window.addEventListener('online', () => {
+            console.log('[PWA] App is online');
+            document.body.classList.remove('offline');
+        });
+        
+        window.addEventListener('offline', () => {
+            console.log('[PWA] App is offline');
+            document.body.classList.add('offline');
+        });
+    </script>
+</body>
+</html>
